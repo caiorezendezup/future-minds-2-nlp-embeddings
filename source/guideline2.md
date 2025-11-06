@@ -134,6 +134,7 @@ class DimensionalityReducer:
         - Dados com correlações lineares
         - Quando você precisa de resultados reproduzíveis
         - Para análise exploratória inicial
+        - Quando os clusters são bem separados linearmente
         """
         self.pca = PCA(n_components=n_components)
         reduced = self.pca.fit_transform(embeddings)
@@ -145,7 +146,7 @@ class DimensionalityReducer:
         
         return reduced
     
-    def reduce_with_tsne(self, embeddings, n_components=2):
+    def reduce_with_tsne(self, embeddings, n_components=2, perplexity=None):
         """
         Redução usando t-SNE (t-Distributed Stochastic Neighbor Embedding)
         
@@ -154,24 +155,43 @@ class DimensionalityReducer:
         - Preserva vizinhança local: Pontos próximos ficam próximos
         - Estocástico: Resultados podem variar entre execuções
         - Lento: Computacionalmente intensivo
-        - Excelente para visualização de clusters
+        - Excelente para visualização de clusters complexos
         
         Quando usar:
-        - Visualização de dados complexos
-        - Identificação de clusters
+        - Visualização de dados complexos e não-lineares
+        - Identificação de clusters em dados de alta dimensão
         - Quando relações são não-lineares
+        - Dados com muitas amostras (>50)
         
         Cuidados:
         - Distâncias globais não são preservadas
         - Não use para análise quantitativa de distâncias
+        - Ajuste perplexity baseado no tamanho dos dados
         """
-        self.tsne = TSNE(n_components=n_components, random_state=42, 
-                        perplexity=min(30, len(embeddings)-1))
+        # Ajustar perplexity automaticamente se não fornecida
+        if perplexity is None:
+            # Regra prática: perplexity entre 5 e 50, ideal ~30
+            # Para datasets pequenos, usar valor menor
+            n_samples = len(embeddings)
+            if n_samples < 30:
+                perplexity = max(3, n_samples // 3)
+            else:
+                perplexity = min(30, n_samples - 1)
+        
+        print(f"t-SNE usando perplexity: {perplexity}")
+        
+        self.tsne = TSNE(
+            n_components=n_components, 
+            random_state=42,
+            perplexity=perplexity,
+            n_iter=1000,  # Mais iterações para convergência
+            learning_rate='auto'
+        )
         return self.tsne.fit_transform(embeddings)
     
     def plot_embeddings(self, embeddings_2d, labels=None, title="Visualização de Embeddings"):
         """
-        Visualização dos embeddings reduzidos
+        Visualização dos embeddings reduzidos com melhorias
         
         Parâmetros:
         - embeddings_2d: Array com embeddings reduzidos para 2D
@@ -183,22 +203,23 @@ class DimensionalityReducer:
         # Colorir pontos se houver labels repetidos (clusters)
         if labels:
             unique_labels = list(set(labels))
-            colors = plt.cm.Set3(np.linspace(0, 1, len(unique_labels)))
+            colors = plt.cm.Set1(np.linspace(0, 1, len(unique_labels)))
             
             for i, label in enumerate(unique_labels):
-                mask = [l == label for l in labels]
+                mask = np.array([l == label for l in labels])
                 plt.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1], 
-                          c=[colors[i]], label=label, alpha=0.7, s=100)
+                          c=[colors[i]], label=label, alpha=0.8, s=120, edgecolors='black', linewidth=0.5)
         else:
             plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], 
                        alpha=0.7, s=100, c='blue')
         
-        # Anotar pontos
+        # Anotar pontos com melhor posicionamento
         if labels:
             for i, label in enumerate(labels):
-                plt.annotate(label, (embeddings_2d[i, 0], embeddings_2d[i, 1]),
+                plt.annotate(f"{label}_{i}", (embeddings_2d[i, 0], embeddings_2d[i, 1]),
                            xytext=(5, 5), textcoords='offset points',
-                           fontsize=9, alpha=0.8)
+                           fontsize=8, alpha=0.7, 
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.7))
         
         plt.title(title, fontsize=14, fontweight='bold')
         plt.xlabel("Dimensão 1", fontsize=12)
@@ -206,72 +227,172 @@ class DimensionalityReducer:
         plt.grid(True, alpha=0.3)
         
         if labels and len(set(labels)) > 1:
-            plt.legend()
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
         plt.tight_layout()
         plt.show()
 
-# Exemplo prático educacional
+# Exemplo prático educacional CORRIGIDO
 def exemplo_reducao_dimensionalidade():
-    """Exemplo completo comparando PCA vs t-SNE"""
+    """
+    Exemplo completo comparando PCA vs t-SNE com dados mais realistas
     
-    # Criar dados de exemplo: embeddings de palavras relacionadas
+    🎯 Objetivos educacionais:
+    1. Mostrar quando PCA funciona melhor (dados lineares)
+    2. Mostrar quando t-SNE funciona melhor (dados não-lineares)
+    3. Demonstrar a importância dos parâmetros
+    """
+    
+    print("=" * 70)
+    print("🎓 DEMONSTRAÇÃO: PCA vs t-SNE - Comparação Educacional")
+    print("=" * 70)
+    
+    # Criar DOIS conjuntos de dados para comparação
     np.random.seed(42)
     
-    # CORREÇÃO: Criar centros com 50 dimensões para cada categoria
-    # Apenas as primeiras 3 dimensões são diferentes, o resto é zero
-    centro_animais = np.zeros(50)
-    centro_animais[:3] = [2, 1, 0]
+    # === DATASET 1: CLUSTERS LINEARES (PCA deve funcionar melhor) ===
+    print("\n📊 DATASET 1: CLUSTERS LINEARES")
+    print("-" * 40)
     
-    centro_frutas = np.zeros(50)
-    centro_frutas[:3] = [-1, 2, 1]
+    # Criar centros bem separados em alta dimensão
+    n_dims = 50
+    centro_animais = np.zeros(n_dims)
+    centro_animais[:10] = np.random.normal(3, 0.5, 10)  # Variação em múltiplas dimensões
     
-    centro_cores = np.zeros(50)
-    centro_cores[:3] = [0, -2, 2]s
+    centro_frutas = np.zeros(n_dims)
+    centro_frutas[10:20] = np.random.normal(-3, 0.5, 10)
     
-    # Gerar embeddings com ruído em torno dos centros
-    animais = np.random.normal(centro_animais, 0.5, (10, 50))
-    frutas = np.random.normal(centro_frutas, 0.5, (10, 50))
-    cores = np.random.normal(centro_cores, 0.5, (10, 50))
+    centro_cores = np.zeros(n_dims)
+    centro_cores[20:30] = np.random.normal(0, 0.5, 10)
     
-    # Combinar dados
-    embeddings = np.vstack([animais, frutas, cores])
-    labels = (['animal'] * 10 + ['fruta'] * 10 + ['cor'] * 10)
+    # Gerar amostras com mais variabilidade
+    n_samples = 15  # Mais amostras por cluster
+    animais_linear = np.random.normal(centro_animais, 0.8, (n_samples, n_dims))
+    frutas_linear = np.random.normal(centro_frutas, 0.8, (n_samples, n_dims))
+    cores_linear = np.random.normal(centro_cores, 0.8, (n_samples, n_dims))
     
-    print(f"Dados originais: {embeddings.shape[0]} amostras, {embeddings.shape[1]} dimensões")
+    embeddings_linear = np.vstack([animais_linear, frutas_linear, cores_linear])
+    labels_linear = (['animal'] * n_samples + ['fruta'] * n_samples + ['cor'] * n_samples)
     
-    # Inicializar redutor
+    print(f"Dados lineares: {embeddings_linear.shape[0]} amostras, {embeddings_linear.shape[1]} dimensões")
+    
+    # === DATASET 2: CLUSTERS NÃO-LINEARES (t-SNE deve funcionar melhor) ===
+    print("\n📊 DATASET 2: CLUSTERS NÃO-LINEARES")
+    print("-" * 40)
+    
+    # Criar estruturas não-lineares (círculos concêntricos em alta dimensão)
+    def create_nonlinear_clusters(n_samples_per_cluster=20, n_dims=50):
+        """Cria clusters em formato de círculos concêntricos"""
+        clusters = []
+        
+        # Cluster 1: círculo interno
+        angles = np.linspace(0, 2*np.pi, n_samples_per_cluster, endpoint=False)
+        radius = 2
+        cluster1 = np.zeros((n_samples_per_cluster, n_dims))
+        cluster1[:, 0] = radius * np.cos(angles) + np.random.normal(0, 0.2, n_samples_per_cluster)
+        cluster1[:, 1] = radius * np.sin(angles) + np.random.normal(0, 0.2, n_samples_per_cluster)
+        cluster1[:, 2:] = np.random.normal(0, 0.1, (n_samples_per_cluster, n_dims-2))
+        
+        # Cluster 2: círculo externo
+        radius = 5
+        cluster2 = np.zeros((n_samples_per_cluster, n_dims))
+        cluster2[:, 0] = radius * np.cos(angles) + np.random.normal(0, 0.3, n_samples_per_cluster)
+        cluster2[:, 1] = radius * np.sin(angles) + np.random.normal(0, 0.3, n_samples_per_cluster)
+        cluster2[:, 2:] = np.random.normal(0, 0.1, (n_samples_per_cluster, n_dims-2))
+        
+        # Cluster 3: centro
+        cluster3 = np.random.normal(0, 0.5, (n_samples_per_cluster, n_dims))
+        
+        return cluster1, cluster2, cluster3
+    
+    cluster1, cluster2, cluster3 = create_nonlinear_clusters(n_samples, n_dims)
+    embeddings_nonlinear = np.vstack([cluster1, cluster2, cluster3])
+    labels_nonlinear = (['interno'] * n_samples + ['externo'] * n_samples + ['centro'] * n_samples)
+    
+    print(f"Dados não-lineares: {embeddings_nonlinear.shape[0]} amostras, {embeddings_nonlinear.shape[1]} dimensões")
+    
+    # === COMPARAÇÃO DOS ALGORITMOS ===
     reducer = DimensionalityReducer()
     
-    # Comparar PCA vs t-SNE
-    print("\n=== REDUÇÃO COM PCA ===")
-    embeddings_pca = reducer.reduce_with_pca(embeddings, n_components=2)
+    # Testar em dados LINEARES
+    print(f"\n{'='*50}")
+    print("🔬 TESTE EM DADOS LINEARES")
+    print('='*50)
     
-    print("\n=== REDUÇÃO COM t-SNE ===")
-    embeddings_tsne = reducer.reduce_with_tsne(embeddings, n_components=2)
+    print("\n--- PCA em dados lineares ---")
+    pca_linear = reducer.reduce_with_pca(embeddings_linear, n_components=2)
     
-    # Visualizar resultados
-    reducer.plot_embeddings(embeddings_pca, labels, "PCA - Redução Linear")
-    reducer.plot_embeddings(embeddings_tsne, labels, "t-SNE - Redução Não-Linear")
+    print("\n--- t-SNE em dados lineares ---")
+    tsne_linear = reducer.reduce_with_tsne(embeddings_linear, n_components=2)
     
-    # Análise comparativa
-    print("\n=== COMPARAÇÃO PCA vs t-SNE ===")
-    print("PCA:")
-    print("✓ Preserva variância global")
-    print("✓ Resultados reproduzíveis")
-    print("✓ Rápido para grandes datasets")
-    print("✗ Assume relações lineares")
+    # Testar em dados NÃO-LINEARES
+    print(f"\n{'='*50}")
+    print("🔬 TESTE EM DADOS NÃO-LINEARES")
+    print('='*50)
     
-    print("\nt-SNE:")
-    print("✓ Excelente para visualizar clusters")
-    print("✓ Captura relações não-lineares")
-    print("✓ Preserva estrutura local")
-    print("✗ Distâncias globais não são confiáveis")
-    print("✗ Lento para grandes datasets")
+    print("\n--- PCA em dados não-lineares ---")
+    pca_nonlinear = reducer.reduce_with_pca(embeddings_nonlinear, n_components=2)
+    
+    print("\n--- t-SNE em dados não-lineares ---")
+    tsne_nonlinear = reducer.reduce_with_tsne(embeddings_nonlinear, n_components=2)
+    
+    # === VISUALIZAÇÕES COMPARATIVAS ===
+    print(f"\n{'='*50}")
+    print("📊 VISUALIZAÇÕES COMPARATIVAS")
+    print('='*50)
+    
+    # Dados lineares
+    reducer.plot_embeddings(pca_linear, labels_linear, 
+                          "PCA - Dados Lineares (Deve funcionar bem)")
+    reducer.plot_embeddings(tsne_linear, labels_linear, 
+                          "t-SNE - Dados Lineares (Pode não ser ideal)")
+    
+    # Dados não-lineares
+    reducer.plot_embeddings(pca_nonlinear, labels_nonlinear, 
+                          "PCA - Dados Não-Lineares (Limitado)")
+    reducer.plot_embeddings(tsne_nonlinear, labels_nonlinear, 
+                          "t-SNE - Dados Não-Lineares (Deve funcionar bem)")
+    
+    # === ANÁLISE EDUCACIONAL ===
+    print(f"\n{'='*70}")
 
-# Executar exemplo
+# Executar exemplo corrigido
 exemplo_reducao_dimensionalidade()
 ```
+
+#### QUANDO USAR CADA TÉCNICA
+
+🔵 PCA (Principal Component Analysis):
+✅ MELHOR para:
+    • Dados com correlações lineares
+    • Clusters bem separados linearmente
+    • Quando você precisa de resultados reproduzíveis
+    • Análise exploratória inicial
+    • Datasets grandes (rápido)
+
+❌ LIMITADO para:
+    • Estruturas não-lineares complexas
+    • Clusters em formato circular/espiral
+    • Quando a variância não reflete a estrutura dos dados
+
+🟠 t-SNE (t-Distributed Stochastic Neighbor Embedding
+✅ MELHOR para
+    • Visualização de clusters complexos
+    • Estruturas não-lineares
+    • Dados de alta dimensão com padrões ocultos
+    • Identificação visual de agrupamentos
+
+❌ LIMITADO para:
+    • Datasets pequenos (<50 amostras)
+    • Análise quantitativa de distâncias
+    • Quando você precisa de resultados reproduzíveis
+    • Dados já bem separados linearmente
+
+💡 DICA PRÁTICA:
+    1. Sempre teste PCA primeiro (rápido e interpretável)
+    2. Se PCA não mostra clusters claros, tente t-SNE
+    3. Ajuste perplexity do t-SNE baseado no tamanho dos dados
+    4. Para produção, prefira PCA; para exploração, use ambos
 
 ### 🎓 **Pontos-chave:**
 
